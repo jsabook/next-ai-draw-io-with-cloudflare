@@ -68,6 +68,7 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+
 # Start the application (HOSTNAME override needed for AWS App Runner)
 CMD ["sh", "-c", "HOSTNAME=0.0.0.0 exec node server.js"]
 
