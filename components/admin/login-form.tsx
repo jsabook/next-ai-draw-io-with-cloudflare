@@ -1,27 +1,55 @@
 "use client"
 
 import { Loader2 } from "lucide-react"
-import { useRouter } from "next/navigation"
-import { useActionState, useEffect } from "react"
-import type { LoginState } from "@/app/admin/login/actions"
-import { loginAction } from "@/app/admin/login/actions"
+import { useState } from "react"
 
 export function LoginForm() {
-    const router = useRouter()
-    const [state, formAction, isPending] = useActionState<
-        LoginState | null,
-        FormData
-    >(loginAction, null)
+    const [isPending, setIsPending] = useState(false)
+    const [error, setError] = useState<string | null>(null)
 
-    useEffect(() => {
-        if (state?.success) {
-            // Use replace to do a full navigation so the cookie is picked up correctly
-            window.location.href = "/admin"
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+        e.preventDefault()
+        setError(null)
+        setIsPending(true)
+
+        const formData = new FormData(e.currentTarget)
+        const username = formData.get("username")?.toString().trim()
+        const password = formData.get("password")?.toString().trim()
+
+        if (!username || !password) {
+            setError("用户名和密码不能为空")
+            setIsPending(false)
+            return
         }
-    }, [state?.success, router])
+
+        try {
+            const res = await fetch("/api/admin/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password }),
+            })
+
+            const data = (await res.json()) as {
+                success?: boolean
+                error?: string
+            }
+
+            if (!res.ok || !data.success) {
+                setError(data.error || "用户名或密码错误")
+                setIsPending(false)
+                return
+            }
+
+            // 全页面跳转，确保 cookie 已落盘
+            window.location.href = "/admin"
+        } catch {
+            setError("登录失败，请稍后重试")
+            setIsPending(false)
+        }
+    }
 
     return (
-        <form action={formAction} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <label
                     htmlFor="username"
@@ -58,9 +86,9 @@ export function LoginForm() {
                 />
             </div>
 
-            {state?.error && (
+            {error && (
                 <div className="text-sm text-[#f87171] bg-[#f87171]/[0.12] px-3.5 py-2.5 rounded-lg border border-[#f87171]/20">
-                    {state.error}
+                    {error}
                 </div>
             )}
 
