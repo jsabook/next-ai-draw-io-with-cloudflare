@@ -1,8 +1,10 @@
-import { SignJWT, jwtVerify } from "jose"
+import { jwtVerify, SignJWT } from "jose"
 
-const JWT_SECRET = new TextEncoder().encode(
-    process.env.JWT_SECRET || "default-secret-please-change-in-production"
-)
+function getJwtSecret(): Uint8Array {
+    return new TextEncoder().encode(
+        process.env.JWT_SECRET || "default-secret-please-change-in-production",
+    )
+}
 
 const JWT_ISSUER = "next-ai-draw-io"
 const JWT_AUDIENCE = "admin"
@@ -23,7 +25,7 @@ export async function hashPassword(password: string): Promise<string> {
         data,
         "PBKDF2",
         false,
-        ["deriveBits"]
+        ["deriveBits"],
     )
 
     const derivedBits = await crypto.subtle.deriveBits(
@@ -34,7 +36,7 @@ export async function hashPassword(password: string): Promise<string> {
             hash: "SHA-256",
         },
         keyMaterial,
-        256
+        256,
     )
 
     const hashArray = new Uint8Array(derivedBits)
@@ -50,13 +52,13 @@ export async function hashPassword(password: string): Promise<string> {
 
 export async function verifyPassword(
     password: string,
-    storedHash: string
+    storedHash: string,
 ): Promise<boolean> {
     const [saltHex, hashHex] = storedHash.split(":")
     if (!saltHex || !hashHex) return false
 
     const salt = new Uint8Array(
-        saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16))
+        saltHex.match(/.{2}/g)!.map((byte) => parseInt(byte, 16)),
     )
 
     const encoder = new TextEncoder()
@@ -67,7 +69,7 @@ export async function verifyPassword(
         data,
         "PBKDF2",
         false,
-        ["deriveBits"]
+        ["deriveBits"],
     )
 
     const derivedBits = await crypto.subtle.deriveBits(
@@ -78,7 +80,7 @@ export async function verifyPassword(
             hash: "SHA-256",
         },
         keyMaterial,
-        256
+        256,
     )
 
     const hashArray = new Uint8Array(derivedBits)
@@ -96,12 +98,12 @@ export async function createToken(payload: JWTPayload): Promise<string> {
         .setIssuer(JWT_ISSUER)
         .setAudience(JWT_AUDIENCE)
         .setExpirationTime(JWT_EXPIRATION)
-        .sign(JWT_SECRET)
+        .sign(getJwtSecret())
 }
 
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
     try {
-        const { payload } = await jwtVerify(token, JWT_SECRET, {
+        const { payload } = await jwtVerify(token, getJwtSecret(), {
             issuer: JWT_ISSUER,
             audience: JWT_AUDIENCE,
         })

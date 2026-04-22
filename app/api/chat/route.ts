@@ -181,7 +181,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
     // === CACHE CHECK END ===
 
     // Read client AI provider overrides from headers
-    const provider = req.headers.get("x-ai-provider")
+    let provider = req.headers.get("x-ai-provider")
     let baseUrl = req.headers.get("x-ai-base-url")
     const selectedModelId = req.headers.get("x-selected-model-id")
 
@@ -191,6 +191,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
     if ((provider || process.env.AI_PROVIDER) === "edgeone" && !baseUrl) {
         const origin = req.headers.get("origin") || new URL(req.url).origin
         baseUrl = `${origin}/api/edgeai`
+        if (!provider) provider = "edgeone"
     }
 
     // Get cookie header for EdgeOne authentication (eo_token, eo_time)
