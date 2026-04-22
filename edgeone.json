@@ -1,4 +1,5 @@
 {
+    "buildCommand": "npm run migrate && next build",
     "cloudFunctions": {
         "nodejs": {
             "maxDuration": 120

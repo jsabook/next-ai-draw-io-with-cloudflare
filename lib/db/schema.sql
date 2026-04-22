@@ -28,3 +28,19 @@ CREATE TABLE IF NOT EXISTS style_presets (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 请求日志表（监控用）
+CREATE TABLE IF NOT EXISTS request_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    model TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    duration_ms INTEGER,
+    success INTEGER NOT NULL DEFAULT 1,
+    session_id TEXT,
+    error_type TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_request_logs_timestamp ON request_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_request_logs_model ON request_logs(model);

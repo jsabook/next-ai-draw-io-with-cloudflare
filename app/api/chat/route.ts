@@ -25,6 +25,7 @@ import {
     validateFileParts,
 } from "@/lib/chat-helpers"
 import { getAllPromptOverrides } from "@/lib/db/prompts"
+import { insertRequestLog } from "@/lib/db/request-logs"
 import { getStylePreset } from "@/lib/db/style-presets"
 import {
     checkAndIncrementRequest,
@@ -75,6 +76,7 @@ function createCachedStreamResponse(xml: string): Response {
 
 // Inner handler function
 async function handleChatRequest(req: Request): Promise<Response> {
+    const requestStartTime = Date.now()
     // Check for access code
     const accessCodes =
         process.env.ACCESS_CODE_LIST?.split(",")
@@ -638,6 +640,18 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
                     (totalUsage.inputTokenDetails?.cacheWriteTokens || 0)
                 recordTokenUsage(userId, totalTokens)
             }
+
+            // Fire-and-forget request log
+            insertRequestLog({
+                timestamp: new Date().toISOString(),
+                model: modelId,
+                input_tokens: totalUsage?.inputTokens ?? null,
+                output_tokens: totalUsage?.outputTokens ?? null,
+                duration_ms: Date.now() - requestStartTime,
+                success: 1,
+                session_id: validSessionId ?? null,
+                error_type: null,
+            }).catch(() => {})
         },
         tools: {
             // Client-side tool that will be executed on the client
@@ -890,9 +904,29 @@ function handleError(error: unknown): Response {
 
 // Wrap handler with error handling
 async function safeHandler(req: Request): Promise<Response> {
+    const requestStartTime = Date.now()
     try {
         return await handleChatRequest(req)
     } catch (error) {
+        // Fire-and-forget error log
+        const errorType =
+            error instanceof APICallError
+                ? "api_error"
+                : error instanceof LoadAPIKeyError
+                  ? "auth"
+                  : error instanceof Error
+                    ? error.message.slice(0, 50)
+                    : "unknown"
+        insertRequestLog({
+            timestamp: new Date().toISOString(),
+            model: null,
+            input_tokens: null,
+            output_tokens: null,
+            duration_ms: Date.now() - requestStartTime,
+            success: 0,
+            session_id: null,
+            error_type: errorType,
+        }).catch(() => {})
         return handleError(error)
     }
 }
