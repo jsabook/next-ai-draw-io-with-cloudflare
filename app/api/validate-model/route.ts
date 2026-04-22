@@ -207,9 +207,11 @@ export async function POST(req: Request) {
                 // EdgeOne uses OpenAI-compatible API via Edge Functions
                 // Need to pass cookies for EdgeOne Pages authentication
                 const cookieHeader = req.headers.get("cookie") || ""
+                const origin =
+                    req.headers.get("origin") || new URL(req.url).origin
                 const edgeone = createOpenAI({
                     apiKey: "edgeone", // EdgeOne doesn't require API key
-                    baseURL: baseUrl || "/api/edgeai",
+                    baseURL: baseUrl || `${origin}/api/edgeai`,
                     headers: {
                         cookie: cookieHeader,
                     },
