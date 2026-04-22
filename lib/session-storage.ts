@@ -152,7 +152,13 @@ export function isIndexedDBAvailable(): boolean {
 export async function isIndexedDBUsable(): Promise<boolean> {
     if (!isIndexedDBAvailable()) return false
     try {
-        await getDB()
+        // Add a 3-second timeout to prevent blocking the UI if IndexedDB hangs
+        await Promise.race([
+            getDB(),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error("IndexedDB timeout")), 3000),
+            ),
+        ])
         return true
     } catch {
         return false
