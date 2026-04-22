@@ -1,16 +1,16 @@
 "use client"
 
+import {
+    BarChart3,
+    FileCode2,
+    FileText,
+    LayoutDashboard,
+    Palette,
+    Settings,
+    Users,
+} from "lucide-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import {
-    LayoutDashboard,
-    Users,
-    BarChart3,
-    Settings,
-    FileText,
-    FileCode2,
-    Palette,
-} from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -39,7 +39,6 @@ const navItems = [
         title: "使用统计",
         href: "/admin/stats",
         icon: BarChart3,
-        disabled: true,
     },
     {
         title: "系统设置",
@@ -84,10 +83,17 @@ export function Sidebar() {
                                             "flex items-center gap-2.5 px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200",
                                             isActive
                                                 ? "bg-[#3b82f6]/[0.12] text-[#3b82f6] border border-[#3b82f6]/[0.15]"
-                                                : "text-[#94a3b8] hover:text-[#f1f5f9] hover:bg-[#3b82f6]/[0.08] border border-transparent"
+                                                : "text-[#94a3b8] hover:text-[#f1f5f9] hover:bg-[#3b82f6]/[0.08] border border-transparent",
                                         )}
                                     >
-                                        <item.icon className={cn("h-[18px] w-[18px]", isActive ? "opacity-100" : "opacity-70")} />
+                                        <item.icon
+                                            className={cn(
+                                                "h-[18px] w-[18px]",
+                                                isActive
+                                                    ? "opacity-100"
+                                                    : "opacity-70",
+                                            )}
+                                        />
                                         <span>{item.title}</span>
                                     </Link>
                                 )}
