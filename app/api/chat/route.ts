@@ -92,7 +92,8 @@ async function handleChatRequest(req: Request): Promise<Response> {
         }
     }
 
-    const body = await req.json()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body = await req.json() as any
     const { messages, xml, previousXml, sessionId } = body
     const customSystemMessage =
         typeof body.customSystemMessage === "string"
