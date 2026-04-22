@@ -24,6 +24,8 @@ import {
     replaceHistoricalToolInputs,
     validateFileParts,
 } from "@/lib/chat-helpers"
+import { getAllPromptOverrides } from "@/lib/db/prompts"
+import { getStylePreset } from "@/lib/db/style-presets"
 import {
     checkAndIncrementRequest,
     isQuotaEnabled,
@@ -37,8 +39,6 @@ import {
 } from "@/lib/langfuse"
 import { findServerModelById } from "@/lib/server-model-config"
 import { getSystemPrompt } from "@/lib/system-prompts"
-import { getAllPromptOverrides } from "@/lib/db/prompts"
-import { getStylePreset } from "@/lib/db/style-presets"
 import { getUserIdFromRequest } from "@/lib/user-id"
 
 export const maxDuration = 120
@@ -93,7 +93,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await req.json() as any
+    const body = (await req.json()) as any
     const { messages, xml, previousXml, sessionId } = body
     const customSystemMessage =
         typeof body.customSystemMessage === "string"
@@ -187,7 +187,8 @@ async function handleChatRequest(req: Request): Promise<Response> {
 
     // For EdgeOne provider, construct full URL from request origin
     // because createOpenAI needs absolute URL, not relative path
-    if (provider === "edgeone" && !baseUrl) {
+    // Also handles server-configured AI_PROVIDER=edgeone (provider header is null in that case)
+    if ((provider || process.env.AI_PROVIDER) === "edgeone" && !baseUrl) {
         const origin = req.headers.get("origin") || new URL(req.url).origin
         baseUrl = `${origin}/api/edgeai`
     }
@@ -280,12 +281,20 @@ async function handleChatRequest(req: Request): Promise<Response> {
     }
 
     // Get the appropriate system prompt based on model (extended for Opus/Haiku 4.5)
-    const systemMessage = getSystemPrompt(modelId, minimalStyle, promptOverrides)
+    const systemMessage = getSystemPrompt(
+        modelId,
+        minimalStyle,
+        promptOverrides,
+    )
     const finalSystemMessage = [
         systemMessage,
-        customSystemMessage ? `## Custom Instructions\n${customSystemMessage}` : "",
+        customSystemMessage
+            ? `## Custom Instructions\n${customSystemMessage}`
+            : "",
         styleSnippet ? `## Diagram Style\n${styleSnippet}` : "",
-    ].filter(Boolean).join("\n\n")
+    ]
+        .filter(Boolean)
+        .join("\n\n")
 
     // Extract file parts (images) from the last user message
     const fileParts =
