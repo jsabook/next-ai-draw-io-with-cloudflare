@@ -15,7 +15,8 @@ export function LoginForm() {
 
     useEffect(() => {
         if (state?.success) {
-            router.push("/admin")
+            // Use replace to do a full navigation so the cookie is picked up correctly
+            window.location.href = "/admin"
         }
     }, [state?.success, router])
 
