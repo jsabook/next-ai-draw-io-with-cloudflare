@@ -1,16 +1,16 @@
-import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
+import { NextResponse } from "next/server"
 import {
-    verifyPassword,
-    createToken,
     AUTH_COOKIE_NAME,
+    createToken,
     getAuthCookieOptions,
+    verifyPassword,
 } from "@/lib/auth"
 import {
-    getAdminByUsername,
-    updateLastLogin,
     createAdmin,
+    getAdminByUsername,
     getAdminCount,
+    updateLastLogin,
 } from "@/lib/db/admin-users"
 
 async function authenticateWithEnv(username: string, password: string) {
@@ -53,12 +53,13 @@ export async function POST(request: Request) {
             username?: string
             password?: string
         }
-        const { username, password } = body
+        const username = body.username?.trim()
+        const password = body.password?.trim()
 
         if (!username || !password) {
             return NextResponse.json(
                 { error: "用户名和密码不能为空" },
-                { status: 400 }
+                { status: 400 },
             )
         }
 
@@ -71,7 +72,7 @@ export async function POST(request: Request) {
         if (!user) {
             return NextResponse.json(
                 { error: "用户名或密码错误" },
-                { status: 401 }
+                { status: 401 },
             )
         }
 

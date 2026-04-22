@@ -1,11 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
+import { useState } from "react"
 
 export function LoginForm() {
-    const router = useRouter()
     const [username, setUsername] = useState("")
     const [password, setPassword] = useState("")
     const [error, setError] = useState("")
@@ -32,7 +30,7 @@ export function LoginForm() {
                 return
             }
 
-            router.push("/admin")
+            window.location.href = "/admin"
         } catch {
             setError("网络错误")
         } finally {
@@ -43,7 +41,10 @@ export function LoginForm() {
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-                <label htmlFor="username" className="block text-xs font-medium uppercase tracking-[0.05em] text-[#94a3b8] mb-1.5">
+                <label
+                    htmlFor="username"
+                    className="block text-xs font-medium uppercase tracking-[0.05em] text-[#94a3b8] mb-1.5"
+                >
                     用户名
                 </label>
                 <input
@@ -59,7 +60,10 @@ export function LoginForm() {
             </div>
 
             <div>
-                <label htmlFor="password" className="block text-xs font-medium uppercase tracking-[0.05em] text-[#94a3b8] mb-1.5">
+                <label
+                    htmlFor="password"
+                    className="block text-xs font-medium uppercase tracking-[0.05em] text-[#94a3b8] mb-1.5"
+                >
                     密码
                 </label>
                 <input
