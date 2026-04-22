@@ -158,7 +158,9 @@ export function useModelConfig(): UseModelConfigReturn {
                     )
                     throw new Error(`Request failed with status ${res.status}`)
                 }
-                return res.json()
+                return res.json() as Promise<{
+                    models?: FlattenedServerModel[]
+                }>
             })
             .then((data) => {
                 const raw: FlattenedServerModel[] = data?.models || []

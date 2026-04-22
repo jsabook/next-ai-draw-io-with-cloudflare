@@ -327,7 +327,10 @@ export function ModelConfigDialog({
                         vertexApiKey: selectedProvider.vertexApiKey,
                     }),
                 })
-                const data = await response.json()
+                const data = (await response.json()) as {
+                    valid?: boolean
+                    error?: string
+                }
 
                 if (data.valid) {
                     updateModel(selectedProviderId, model.id, {

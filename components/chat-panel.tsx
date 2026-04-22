@@ -21,10 +21,10 @@ import { flushSync } from "react-dom"
 import { Toaster, toast } from "sonner"
 import { ButtonWithTooltip } from "@/components/button-with-tooltip"
 import { ChatInput } from "@/components/chat-input"
-import type { StylePresetOption } from "@/components/style-preset-selector"
 import Image from "@/components/image-with-basepath"
 import { ModelConfigDialog } from "@/components/model-config-dialog"
 import { SettingsDialog } from "@/components/settings-dialog"
+import type { StylePresetOption } from "@/components/style-preset-selector"
 import { useDiagram } from "@/contexts/diagram-context"
 import { useDiagramToolHandlers } from "@/hooks/use-diagram-tool-handlers"
 import { useDictionary } from "@/hooks/use-dictionary"
@@ -193,8 +193,8 @@ export default function ChatPanel({
     // Load style presets on mount
     useEffect(() => {
         fetch("/api/style-presets")
-            .then((r) => r.json())
-            .then((data: { presets?: StylePresetOption[] }) => {
+            .then((r) => r.json() as Promise<{ presets?: StylePresetOption[] }>)
+            .then((data) => {
                 if (data.presets) setStylePresets(data.presets)
             })
             .catch(() => {})
@@ -219,7 +219,14 @@ export default function ChatPanel({
     // Check config on mount
     useEffect(() => {
         fetch(getApiEndpoint("/api/config"))
-            .then((res) => res.json())
+            .then(
+                (res) =>
+                    res.json() as Promise<{
+                        dailyRequestLimit?: number
+                        dailyTokenLimit?: number
+                        tpmLimit?: number
+                    }>,
+            )
             .then((data) => {
                 setDailyRequestLimit(data.dailyRequestLimit || 0)
                 setDailyTokenLimit(data.dailyTokenLimit || 0)
@@ -1082,7 +1089,13 @@ export default function ChatPanel({
         sendMessage(
             { parts },
             {
-                body: { xml, previousXml, sessionId, customSystemMessage, stylePresetId: selectedStyleId },
+                body: {
+                    xml,
+                    previousXml,
+                    sessionId,
+                    customSystemMessage,
+                    stylePresetId: selectedStyleId,
+                },
                 headers: {
                     "x-access-code": config.accessCode,
                     ...(config.aiProvider && {

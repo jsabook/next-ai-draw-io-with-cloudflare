@@ -9,7 +9,7 @@ const USER_AGENT = "Mozilla/5.0 (compatible; NextAIDrawio/1.0)"
 
 export async function POST(req: Request) {
     try {
-        const { url } = await req.json()
+        const { url } = (await req.json()) as { url: unknown }
 
         if (!url || typeof url !== "string") {
             return NextResponse.json(

@@ -140,7 +140,7 @@ function SettingsContent({
         fetch(getApiEndpoint("/api/config"))
             .then((res) => {
                 if (!res.ok) throw new Error(`HTTP ${res.status}`)
-                return res.json()
+                return res.json() as Promise<{ accessCodeRequired?: boolean }>
             })
             .then((data) => {
                 const required = data?.accessCodeRequired === true
@@ -240,7 +240,10 @@ function SettingsContent({
                 },
             )
 
-            const data = await response.json()
+            const data = (await response.json()) as {
+                valid?: boolean
+                message?: string
+            }
 
             if (!data.valid) {
                 setError(data.message || dict.errors.invalidAccessCode)
