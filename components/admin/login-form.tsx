@@ -1,15 +1,23 @@
 "use client"
 
 import { Loader2 } from "lucide-react"
-import { useActionState } from "react"
+import { useRouter } from "next/navigation"
+import { useActionState, useEffect } from "react"
 import type { LoginState } from "@/app/admin/login/actions"
 import { loginAction } from "@/app/admin/login/actions"
 
 export function LoginForm() {
+    const router = useRouter()
     const [state, formAction, isPending] = useActionState<
         LoginState | null,
         FormData
     >(loginAction, null)
+
+    useEffect(() => {
+        if (state?.success) {
+            router.push("/admin")
+        }
+    }, [state?.success, router])
 
     return (
         <form action={formAction} className="space-y-4">

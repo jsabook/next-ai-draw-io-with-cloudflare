@@ -1,7 +1,6 @@
 "use server"
 
 import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
 import {
     AUTH_COOKIE_NAME,
     createToken,
@@ -51,6 +50,7 @@ async function authenticateWithD1(username: string, password: string) {
 
 export interface LoginState {
     error?: string
+    success?: boolean
 }
 
 export async function loginAction(
@@ -85,5 +85,5 @@ export async function loginAction(
     const cookieStore = await cookies()
     cookieStore.set(AUTH_COOKIE_NAME, token, cookieOptions)
 
-    redirect("/admin")
+    return { success: true }
 }
