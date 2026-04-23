@@ -5,6 +5,7 @@ import {
     createUIMessageStreamResponse,
     InvalidToolInputError,
     LoadAPIKeyError,
+    RetryError,
     stepCountIs,
     streamText,
 } from "ai"
@@ -535,9 +536,16 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
 
     const allMessages = [...systemMessages, ...enhancedMessages]
 
+    const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "60000", 10)
+    const abortSignal = AbortSignal.any([
+        req.signal,
+        AbortSignal.timeout(timeoutMs),
+    ])
+
     const result = streamText({
         model,
-        abortSignal: req.signal,
+        abortSignal,
+        maxRetries: 0,
         ...(process.env.MAX_OUTPUT_TOKENS && {
             maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS, 10),
         }),
@@ -847,6 +855,24 @@ function handleError(error: unknown): Response {
     const isDev = process.env.NODE_ENV === "development"
 
     // Check for specific AI SDK error types
+    if (
+        RetryError.isInstance(error) ||
+        (error instanceof Error && error.name === "AI_RetryError")
+    ) {
+        const isTimeout =
+            error.message.toLowerCase().includes("timeout") ||
+            (RetryError.isInstance(error) &&
+                (error.lastError as any)?.statusCode === 524)
+        return Response.json(
+            {
+                error: isTimeout
+                    ? "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
+                    : error.message,
+            },
+            { status: 504 },
+        )
+    }
+
     if (APICallError.isInstance(error)) {
         return Response.json(
             {
