@@ -834,10 +834,24 @@ Call this tool to get shape names and usage syntax for a specific library.`,
 
     return result.toUIMessageStreamResponse({
         sendReasoning: true,
+        onError: (error) => {
+            console.error("[stream error]", error)
+            if (APICallError.isInstance(error)) {
+                const isTimeout =
+                    error.statusCode === 524 ||
+                    error.message.toLowerCase().includes("timeout")
+                return isTimeout
+                    ? "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
+                    : error.message
+            }
+            if (error instanceof Error) {
+                return error.message
+            }
+            return "An unexpected error occurred"
+        },
         messageMetadata: ({ part }) => {
             if (part.type === "finish") {
                 const usage = (part as any).totalUsage
-                // AI SDK 6 provides totalTokens directly
                 return {
                     totalTokens: usage?.totalTokens ?? 0,
                     finishReason: (part as any).finishReason,
