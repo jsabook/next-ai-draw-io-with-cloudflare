@@ -537,14 +537,11 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
     const allMessages = [...systemMessages, ...enhancedMessages]
 
     const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "60000", 10)
-    const abortSignal = AbortSignal.any([
-        req.signal,
-        AbortSignal.timeout(timeoutMs),
-    ])
 
     const result = streamText({
         model,
-        abortSignal,
+        abortSignal: req.signal,
+        timeout: timeoutMs,
         maxRetries: 0,
         ...(process.env.MAX_OUTPUT_TOKENS && {
             maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS, 10),
