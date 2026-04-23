@@ -874,15 +874,20 @@ function handleError(error: unknown): Response {
     }
 
     if (APICallError.isInstance(error)) {
+        const isTimeout =
+            error.statusCode === 524 ||
+            error.message.toLowerCase().includes("timeout")
         return Response.json(
             {
-                error: error.message,
+                error: isTimeout
+                    ? "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
+                    : error.message,
                 ...(isDev && {
                     details: error.responseBody,
                     stack: error.stack,
                 }),
             },
-            { status: error.statusCode || 500 },
+            { status: isTimeout ? 504 : error.statusCode || 500 },
         )
     }
 
