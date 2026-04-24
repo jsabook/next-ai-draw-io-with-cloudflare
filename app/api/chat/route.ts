@@ -888,16 +888,19 @@ Call this tool to get shape names and usage syntax for a specific library.`,
         },
         onError: (error) => {
             console.error("[stream error]", error)
+            const msg =
+                error instanceof Error ? error.message : String(error ?? "")
+            const lowerMsg = msg.toLowerCase()
             const isTimeout =
-                (APICallError.isInstance(error) &&
-                    (error.statusCode === 524 ||
-                        error.message.toLowerCase().includes("timeout"))) ||
-                (error instanceof Error && error.message.includes("timed out"))
-            return isTimeout
-                ? "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
-                : error instanceof Error
-                  ? error.message
-                  : "An unexpected error occurred"
+                lowerMsg.includes("timeout") ||
+                lowerMsg.includes("timed out") ||
+                (APICallError.isInstance(error) && error.statusCode === 524)
+            // "No output generated" is always a side-effect of an earlier error
+            const isNoOutput = lowerMsg.includes("no output generated")
+            if (isTimeout || isNoOutput) {
+                return "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
+            }
+            return msg || "An unexpected error occurred"
         },
     })
 
