@@ -536,11 +536,26 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
 
     const allMessages = [...systemMessages, ...enhancedMessages]
 
-    const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "20000", 10)
+    const mapStreamError = (error: unknown): string => {
+        const msg = error instanceof Error ? error.message : String(error ?? "")
+        const lowerMsg = msg.toLowerCase()
+        const isTimeout =
+            lowerMsg.includes("timeout") ||
+            lowerMsg.includes("timed out") ||
+            (APICallError.isInstance(error) && error.statusCode === 524)
+        const isNoOutput = lowerMsg.includes("no output generated")
+        if (isTimeout || isNoOutput) {
+            return "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
+        }
+        return msg || "An unexpected error occurred"
+    }
+
+    const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "40000", 10)
     const abortController = new AbortController()
 
     const uiStream = createUIMessageStream({
         execute: async ({ writer }) => {
+            const innerErrorHandled = false
             const timeoutId = setTimeout(
                 () => abortController.abort(),
                 timeoutMs,
