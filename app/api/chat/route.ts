@@ -536,132 +536,142 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
 
     const allMessages = [...systemMessages, ...enhancedMessages]
 
-    const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "60000", 10)
+    const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "20000", 10)
+    const abortController = new AbortController()
 
-    const result = streamText({
-        model,
-        abortSignal: req.signal,
-        timeout: timeoutMs,
-        maxRetries: 0,
-        ...(process.env.MAX_OUTPUT_TOKENS && {
-            maxOutputTokens: parseInt(process.env.MAX_OUTPUT_TOKENS, 10),
-        }),
-        stopWhen: stepCountIs(5),
-        // Repair truncated tool calls when maxOutputTokens is reached mid-JSON
-        experimental_repairToolCall: async ({ toolCall, error }) => {
-            // DEBUG: Log what we're trying to repair
-            console.log(`[repairToolCall] Tool: ${toolCall.toolName}`)
-            console.log(
-                `[repairToolCall] Error: ${error.name} - ${error.message}`,
+    const uiStream = createUIMessageStream({
+        execute: async ({ writer }) => {
+            const timeoutId = setTimeout(
+                () => abortController.abort(),
+                timeoutMs,
             )
-            console.log(`[repairToolCall] Input type: ${typeof toolCall.input}`)
-            console.log(`[repairToolCall] Input value:`, toolCall.input)
-
-            // Only attempt repair for invalid tool input (broken JSON from truncation)
-            if (
-                error instanceof InvalidToolInputError ||
-                error.name === "AI_InvalidToolInputError"
-            ) {
-                try {
-                    // Pre-process to fix common LLM JSON errors that jsonrepair can't handle
-                    let inputToRepair = toolCall.input
-                    if (typeof inputToRepair === "string") {
-                        // Fix `:=` instead of `: ` (LLM sometimes generates this)
-                        inputToRepair = inputToRepair.replace(/:=/g, ": ")
-                        // Fix `= "` instead of `: "`
-                        inputToRepair = inputToRepair.replace(/=\s*"/g, ': "')
-                        // Fix inconsistent quote escaping in XML attributes within JSON strings
-                        // Pattern: attribute="value\" where opening quote is unescaped but closing is escaped
-                        // Example: y="-20\" should be y=\"-20\"
-                        inputToRepair = inputToRepair.replace(
-                            /(\w+)="([^"]*?)\\"/g,
-                            '$1=\\"$2\\"',
+            try {
+                const result = streamText({
+                    model,
+                    abortSignal: AbortSignal.any([
+                        req.signal,
+                        abortController.signal,
+                    ]),
+                    maxRetries: 0,
+                    ...(process.env.MAX_OUTPUT_TOKENS && {
+                        maxOutputTokens: parseInt(
+                            process.env.MAX_OUTPUT_TOKENS,
+                            10,
+                        ),
+                    }),
+                    stopWhen: stepCountIs(5),
+                    experimental_repairToolCall: async ({
+                        toolCall,
+                        error,
+                    }) => {
+                        console.log(
+                            `[repairToolCall] Tool: ${toolCall.toolName}`,
                         )
-                    }
-                    // Use jsonrepair to fix truncated JSON
-                    const repairedInput = jsonrepair(inputToRepair)
-                    console.log(
-                        `[repairToolCall] Repaired truncated JSON for tool: ${toolCall.toolName}`,
-                    )
-                    return { ...toolCall, input: repairedInput }
-                } catch (repairError) {
-                    console.warn(
-                        `[repairToolCall] Failed to repair JSON for tool: ${toolCall.toolName}`,
-                        repairError,
-                    )
-                    // Return a placeholder input to avoid API errors in multi-step
-                    // The tool will fail gracefully on client side
-                    if (toolCall.toolName === "edit_diagram") {
-                        return {
-                            ...toolCall,
-                            input: {
-                                operations: [],
-                                _error: "JSON repair failed - no operations to apply",
-                            },
+                        console.log(
+                            `[repairToolCall] Error: ${error.name} - ${error.message}`,
+                        )
+                        console.log(
+                            `[repairToolCall] Input type: ${typeof toolCall.input}`,
+                        )
+                        console.log(
+                            `[repairToolCall] Input value:`,
+                            toolCall.input,
+                        )
+                        if (
+                            error instanceof InvalidToolInputError ||
+                            error.name === "AI_InvalidToolInputError"
+                        ) {
+                            try {
+                                let inputToRepair = toolCall.input
+                                if (typeof inputToRepair === "string") {
+                                    inputToRepair = inputToRepair.replace(
+                                        /:=/g,
+                                        ": ",
+                                    )
+                                    inputToRepair = inputToRepair.replace(
+                                        /=\s*"/g,
+                                        ': "',
+                                    )
+                                    inputToRepair = inputToRepair.replace(
+                                        /(\w+)="([^"]*?)\\"/g,
+                                        '$1=\\"$2\\"',
+                                    )
+                                }
+                                const repairedInput = jsonrepair(inputToRepair)
+                                console.log(
+                                    `[repairToolCall] Repaired truncated JSON for tool: ${toolCall.toolName}`,
+                                )
+                                return { ...toolCall, input: repairedInput }
+                            } catch (repairError) {
+                                console.warn(
+                                    `[repairToolCall] Failed to repair JSON for tool: ${toolCall.toolName}`,
+                                    repairError,
+                                )
+                                if (toolCall.toolName === "edit_diagram") {
+                                    return {
+                                        ...toolCall,
+                                        input: {
+                                            operations: [],
+                                            _error: "JSON repair failed - no operations to apply",
+                                        },
+                                    }
+                                }
+                                if (toolCall.toolName === "display_diagram") {
+                                    return {
+                                        ...toolCall,
+                                        input: {
+                                            xml: "",
+                                            _error: "JSON repair failed - empty diagram",
+                                        },
+                                    }
+                                }
+                                return null
+                            }
                         }
-                    }
-                    if (toolCall.toolName === "display_diagram") {
-                        return {
-                            ...toolCall,
-                            input: {
-                                xml: "",
-                                _error: "JSON repair failed - empty diagram",
-                            },
+                        return null
+                    },
+                    messages: allMessages,
+                    ...(providerOptions && { providerOptions }),
+                    ...(headers && { headers }),
+                    ...(getTelemetryConfig({
+                        sessionId: validSessionId,
+                        userId,
+                    }) && {
+                        experimental_telemetry: getTelemetryConfig({
+                            sessionId: validSessionId,
+                            userId,
+                        }),
+                    }),
+                    onFinish: ({ text, totalUsage }) => {
+                        setTraceOutput(text)
+                        if (
+                            isQuotaEnabled() &&
+                            !hasOwnApiKey &&
+                            userId !== "anonymous" &&
+                            totalUsage
+                        ) {
+                            const totalTokens =
+                                (totalUsage.inputTokens || 0) +
+                                (totalUsage.outputTokens || 0) +
+                                (totalUsage.cachedInputTokens || 0) +
+                                (totalUsage.inputTokenDetails
+                                    ?.cacheWriteTokens || 0)
+                            recordTokenUsage(userId, totalTokens)
                         }
-                    }
-                    return null
-                }
-            }
-            // Don't attempt to repair other errors (like NoSuchToolError)
-            return null
-        },
-        messages: allMessages,
-        ...(providerOptions && { providerOptions }), // This now includes all reasoning configs
-        ...(headers && { headers }),
-        // Langfuse telemetry config (returns undefined if not configured)
-        ...(getTelemetryConfig({ sessionId: validSessionId, userId }) && {
-            experimental_telemetry: getTelemetryConfig({
-                sessionId: validSessionId,
-                userId,
-            }),
-        }),
-        onFinish: ({ text, totalUsage }) => {
-            // AI SDK 6 telemetry auto-reports token usage on its spans
-            setTraceOutput(text)
-
-            // Record token usage for server-side quota tracking (if enabled)
-            // Use totalUsage (cumulative across all steps) instead of usage (final step only)
-            // Include all 4 token types: input, output, cache read, cache write
-            if (
-                isQuotaEnabled() &&
-                !hasOwnApiKey &&
-                userId !== "anonymous" &&
-                totalUsage
-            ) {
-                const totalTokens =
-                    (totalUsage.inputTokens || 0) +
-                    (totalUsage.outputTokens || 0) +
-                    (totalUsage.cachedInputTokens || 0) +
-                    (totalUsage.inputTokenDetails?.cacheWriteTokens || 0)
-                recordTokenUsage(userId, totalTokens)
-            }
-
-            // Fire-and-forget request log
-            insertRequestLog({
-                timestamp: new Date().toISOString(),
-                model: modelId,
-                input_tokens: totalUsage?.inputTokens ?? null,
-                output_tokens: totalUsage?.outputTokens ?? null,
-                duration_ms: Date.now() - requestStartTime,
-                success: 1,
-                session_id: validSessionId ?? null,
-                error_type: null,
-            }).catch(() => {})
-        },
-        tools: {
-            // Client-side tool that will be executed on the client
-            display_diagram: {
-                description: `Display a diagram on draw.io. Pass ONLY the mxCell elements - wrapper tags and root cells are added automatically.
+                        insertRequestLog({
+                            timestamp: new Date().toISOString(),
+                            model: modelId,
+                            input_tokens: totalUsage?.inputTokens ?? null,
+                            output_tokens: totalUsage?.outputTokens ?? null,
+                            duration_ms: Date.now() - requestStartTime,
+                            success: 1,
+                            session_id: validSessionId ?? null,
+                            error_type: null,
+                        }).catch(() => {})
+                    },
+                    tools: {
+                        display_diagram: {
+                            description: `Display a diagram on draw.io. Pass ONLY the mxCell elements - wrapper tags and root cells are added automatically.
 
 VALIDATION RULES (XML will be rejected if violated):
 1. Generate ONLY mxCell elements - NO wrapper tags (<mxfile>, <mxGraphModel>, <root>)
@@ -692,14 +702,16 @@ Notes:
 - For AWS diagrams, use **AWS 2025 icons**.
 - For animated connectors, add "flowAnimation=1" to edge style.
 `,
-                inputSchema: z.object({
-                    xml: z
-                        .string()
-                        .describe("XML string to be displayed on draw.io"),
-                }),
-            },
-            edit_diagram: {
-                description: `Edit the current diagram by ID-based operations (update/add/delete cells).
+                            inputSchema: z.object({
+                                xml: z
+                                    .string()
+                                    .describe(
+                                        "XML string to be displayed on draw.io",
+                                    ),
+                            }),
+                        },
+                        edit_diagram: {
+                            description: `Edit the current diagram by ID-based operations (update/add/delete cells).
 
 Operations:
 - update: Replace an existing cell by its id. Provide cell_id and complete new_xml.
@@ -715,33 +727,37 @@ Example - Add a rectangle:
 
 Example - Delete container (children & edges auto-deleted):
 {"operations": [{"operation": "delete", "cell_id": "2"}]}`,
-                inputSchema: z.object({
-                    operations: z
-                        .array(
-                            z.object({
-                                operation: z
-                                    .enum(["update", "add", "delete"])
-                                    .describe(
-                                        "Operation to perform: add, update, or delete",
-                                    ),
-                                cell_id: z
-                                    .string()
-                                    .describe(
-                                        "The id of the mxCell. Must match the id attribute in new_xml.",
-                                    ),
-                                new_xml: z
-                                    .string()
-                                    .optional()
-                                    .describe(
-                                        "Complete mxCell XML element (required for update/add)",
-                                    ),
+                            inputSchema: z.object({
+                                operations: z
+                                    .array(
+                                        z.object({
+                                            operation: z
+                                                .enum([
+                                                    "update",
+                                                    "add",
+                                                    "delete",
+                                                ])
+                                                .describe(
+                                                    "Operation to perform: add, update, or delete",
+                                                ),
+                                            cell_id: z
+                                                .string()
+                                                .describe(
+                                                    "The id of the mxCell. Must match the id attribute in new_xml.",
+                                                ),
+                                            new_xml: z
+                                                .string()
+                                                .optional()
+                                                .describe(
+                                                    "Complete mxCell XML element (required for update/add)",
+                                                ),
+                                        }),
+                                    )
+                                    .describe("Array of operations to apply"),
                             }),
-                        )
-                        .describe("Array of operations to apply"),
-                }),
-            },
-            append_diagram: {
-                description: `Continue generating diagram XML when previous display_diagram output was truncated due to length limits.
+                        },
+                        append_diagram: {
+                            description: `Continue generating diagram XML when previous display_diagram output was truncated due to length limits.
 
 WHEN TO USE: Only call this tool after display_diagram was truncated (you'll see an error message about truncation).
 
@@ -752,16 +768,16 @@ CRITICAL INSTRUCTIONS:
 4. If still truncated, call append_diagram again with the next fragment
 
 Example: If previous output ended with '<mxCell id="x" style="rounded=1', continue with ';" vertex="1">...' and complete the remaining elements.`,
-                inputSchema: z.object({
-                    xml: z
-                        .string()
-                        .describe(
-                            "Continuation XML fragment to append (NO wrapper tags)",
-                        ),
-                }),
-            },
-            get_shape_library: {
-                description: `Get draw.io shape/icon library documentation with style syntax and shape names.
+                            inputSchema: z.object({
+                                xml: z
+                                    .string()
+                                    .describe(
+                                        "Continuation XML fragment to append (NO wrapper tags)",
+                                    ),
+                            }),
+                        },
+                        get_shape_library: {
+                            description: `Get draw.io shape/icon library documentation with style syntax and shape names.
 
 Available libraries:
 - Cloud: aws4, azure2, gcp2, alibaba_cloud, openstack, salesforce
@@ -774,89 +790,118 @@ Available libraries:
 - Icons: webicons
 
 Call this tool to get shape names and usage syntax for a specific library.`,
-                inputSchema: z.object({
-                    library: z
-                        .string()
-                        .describe(
-                            "Library name (e.g., 'aws4', 'kubernetes', 'flowchart')",
-                        ),
-                }),
-                execute: async ({ library }) => {
-                    // Sanitize input - prevent path traversal attacks
-                    const sanitizedLibrary = library
-                        .toLowerCase()
-                        .replace(/[^a-z0-9_-]/g, "")
+                            inputSchema: z.object({
+                                library: z
+                                    .string()
+                                    .describe(
+                                        "Library name (e.g., 'aws4', 'kubernetes', 'flowchart')",
+                                    ),
+                            }),
+                            execute: async ({ library }) => {
+                                const sanitizedLibrary = library
+                                    .toLowerCase()
+                                    .replace(/[^a-z0-9_-]/g, "")
+                                if (
+                                    sanitizedLibrary !== library.toLowerCase()
+                                ) {
+                                    return `Invalid library name "${library}". Use only letters, numbers, underscores, and hyphens.`
+                                }
+                                const baseDir = path.join(
+                                    process.cwd(),
+                                    "docs/shape-libraries",
+                                )
+                                const filePath = path.join(
+                                    baseDir,
+                                    `${sanitizedLibrary}.md`,
+                                )
+                                const resolvedPath = path.resolve(filePath)
+                                if (
+                                    !resolvedPath.startsWith(
+                                        path.resolve(baseDir),
+                                    )
+                                ) {
+                                    return `Invalid library path.`
+                                }
+                                try {
+                                    const content = await fs.readFile(
+                                        filePath,
+                                        "utf-8",
+                                    )
+                                    return content
+                                } catch (error) {
+                                    if (
+                                        (error as NodeJS.ErrnoException)
+                                            .code === "ENOENT"
+                                    ) {
+                                        return `Library "${library}" not found. Available: aws4, azure2, gcp2, alibaba_cloud, cisco19, kubernetes, network, bpmn, flowchart, basic, arrows2, vvd, salesforce, citrix, sap, mscae, atlassian, fluidpower, electrical, pid, cabinets, floorplan, webicons, infographic, sitemap, android, material_design, lean_mapping, openstack, rack`
+                                    }
+                                    console.error(
+                                        `[get_shape_library] Error loading "${library}":`,
+                                        error,
+                                    )
+                                    return `Error loading library "${library}". Please try again.`
+                                }
+                            },
+                        },
+                    },
+                    ...(process.env.TEMPERATURE !== undefined && {
+                        temperature: parseFloat(process.env.TEMPERATURE),
+                    }),
+                })
 
-                    if (sanitizedLibrary !== library.toLowerCase()) {
-                        return `Invalid library name "${library}". Use only letters, numbers, underscores, and hyphens.`
-                    }
+                writer.merge(
+                    result.toUIMessageStream({
+                        sendReasoning: true,
+                        messageMetadata: ({ part }) => {
+                            if (part.type === "finish") {
+                                const usage = (part as any).totalUsage
+                                return {
+                                    totalTokens: usage?.totalTokens ?? 0,
+                                    finishReason: (part as any).finishReason,
+                                }
+                            }
+                            return undefined
+                        },
+                    }),
+                )
 
-                    const baseDir = path.join(
-                        process.cwd(),
-                        "docs/shape-libraries",
+                // Await completion; swallow AbortError from our own timeout
+                await Promise.resolve(result.usage).catch((e: unknown) => {
+                    if ((e as any)?.name === "AbortError") return
+                    throw e
+                })
+            } catch (e: unknown) {
+                // Convert our own AbortError into a friendly Error so onError
+                // can send it as an in-band stream event instead of closing silently
+                if (
+                    abortController.signal.aborted &&
+                    (e as any)?.name === "AbortError"
+                ) {
+                    throw new Error(
+                        "AI provider timed out. The model may be overloaded — please try again or switch to a different model.",
                     )
-                    const filePath = path.join(
-                        baseDir,
-                        `${sanitizedLibrary}.md`,
-                    )
-
-                    // Verify path stays within expected directory
-                    const resolvedPath = path.resolve(filePath)
-                    if (!resolvedPath.startsWith(path.resolve(baseDir))) {
-                        return `Invalid library path.`
-                    }
-
-                    try {
-                        const content = await fs.readFile(filePath, "utf-8")
-                        return content
-                    } catch (error) {
-                        if (
-                            (error as NodeJS.ErrnoException).code === "ENOENT"
-                        ) {
-                            return `Library "${library}" not found. Available: aws4, azure2, gcp2, alibaba_cloud, cisco19, kubernetes, network, bpmn, flowchart, basic, arrows2, vvd, salesforce, citrix, sap, mscae, atlassian, fluidpower, electrical, pid, cabinets, floorplan, webicons, infographic, sitemap, android, material_design, lean_mapping, openstack, rack`
-                        }
-                        console.error(
-                            `[get_shape_library] Error loading "${library}":`,
-                            error,
-                        )
-                        return `Error loading library "${library}". Please try again.`
-                    }
-                },
-            },
+                }
+                throw e
+            } finally {
+                clearTimeout(timeoutId)
+            }
         },
-        ...(process.env.TEMPERATURE !== undefined && {
-            temperature: parseFloat(process.env.TEMPERATURE),
-        }),
-    })
-
-    return result.toUIMessageStreamResponse({
-        sendReasoning: true,
         onError: (error) => {
             console.error("[stream error]", error)
-            if (APICallError.isInstance(error)) {
-                const isTimeout =
-                    error.statusCode === 524 ||
-                    error.message.toLowerCase().includes("timeout")
-                return isTimeout
-                    ? "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
-                    : error.message
-            }
-            if (error instanceof Error) {
-                return error.message
-            }
-            return "An unexpected error occurred"
-        },
-        messageMetadata: ({ part }) => {
-            if (part.type === "finish") {
-                const usage = (part as any).totalUsage
-                return {
-                    totalTokens: usage?.totalTokens ?? 0,
-                    finishReason: (part as any).finishReason,
-                }
-            }
-            return undefined
+            const isTimeout =
+                (APICallError.isInstance(error) &&
+                    (error.statusCode === 524 ||
+                        error.message.toLowerCase().includes("timeout"))) ||
+                (error instanceof Error && error.message.includes("timed out"))
+            return isTimeout
+                ? "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
+                : error instanceof Error
+                  ? error.message
+                  : "An unexpected error occurred"
         },
     })
+
+    return createUIMessageStreamResponse({ stream: uiStream })
 }
 
 // Helper to categorize errors and return appropriate response
