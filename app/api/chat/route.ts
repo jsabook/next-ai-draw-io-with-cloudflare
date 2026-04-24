@@ -901,7 +901,40 @@ Call this tool to get shape names and usage syntax for a specific library.`,
         },
     })
 
-    return createUIMessageStreamResponse({ stream: uiStream })
+    const baseResponse = createUIMessageStreamResponse({ stream: uiStream })
+
+    // Inject SSE keepalive comments every 5s to prevent idle connection timeout.
+    // EdgeOne CDN (and browsers) drop connections that receive no data for ~30s.
+    // SSE comment lines (": keepalive") are ignored by all SSE parsers including
+    // the AI SDK client, so they keep the TCP connection alive without side effects.
+    const keepaliveInterval = 5000
+    const keepaliveChunk = new TextEncoder().encode(": keepalive\n\n")
+    const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+    const bodyWriter = writable.getWriter()
+
+    ;(async () => {
+        const reader = baseResponse.body!.getReader()
+        const intervalId = setInterval(() => {
+            bodyWriter.write(keepaliveChunk).catch(() => {})
+        }, keepaliveInterval)
+        try {
+            while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                await bodyWriter.write(value)
+            }
+            await bodyWriter.close()
+        } catch {
+            await bodyWriter.abort().catch(() => {})
+        } finally {
+            clearInterval(intervalId)
+        }
+    })()
+
+    return new Response(readable, {
+        status: baseResponse.status,
+        headers: baseResponse.headers,
+    })
 }
 
 // Helper to categorize errors and return appropriate response
