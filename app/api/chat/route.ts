@@ -550,16 +550,23 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
         return msg || "An unexpected error occurred"
     }
 
-    const timeoutMs = parseInt(process.env.AI_REQUEST_TIMEOUT_MS || "40000", 10)
+    const idleTimeoutMs = parseInt(
+        process.env.AI_REQUEST_TIMEOUT_MS || "40000",
+        10,
+    )
     const abortController = new AbortController()
 
     const uiStream = createUIMessageStream({
         execute: async ({ writer }) => {
-            const innerErrorHandled = false
-            const timeoutId = setTimeout(
-                () => abortController.abort(),
-                timeoutMs,
-            )
+            let idleTimer: ReturnType<typeof setTimeout> | null = null
+            const resetIdleTimer = () => {
+                if (idleTimer) clearTimeout(idleTimer)
+                idleTimer = setTimeout(
+                    () => abortController.abort(),
+                    idleTimeoutMs,
+                )
+            }
+            resetIdleTimer()
             try {
                 const result = streamText({
                     model,
@@ -864,21 +871,30 @@ Call this tool to get shape names and usage syntax for a specific library.`,
                     }),
                 })
 
-                writer.merge(
-                    result.toUIMessageStream({
-                        sendReasoning: true,
-                        messageMetadata: ({ part }) => {
-                            if (part.type === "finish") {
-                                const usage = (part as any).totalUsage
-                                return {
-                                    totalTokens: usage?.totalTokens ?? 0,
-                                    finishReason: (part as any).finishReason,
-                                }
+                const uiMessageStream = result.toUIMessageStream({
+                    sendReasoning: true,
+                    messageMetadata: ({ part }) => {
+                        if (part.type === "finish") {
+                            const usage = (part as any).totalUsage
+                            return {
+                                totalTokens: usage?.totalTokens ?? 0,
+                                finishReason: (part as any).finishReason,
                             }
-                            return undefined
+                        }
+                        return undefined
+                    },
+                })
+
+                const idleResetStream = uiMessageStream.pipeThrough(
+                    new TransformStream({
+                        transform(chunk, controller) {
+                            resetIdleTimer()
+                            controller.enqueue(chunk)
                         },
                     }),
                 )
+
+                writer.merge(idleResetStream)
 
                 // Await completion; swallow AbortError from our own timeout
                 await Promise.resolve(result.usage).catch((e: unknown) => {
@@ -898,7 +914,7 @@ Call this tool to get shape names and usage syntax for a specific library.`,
                 }
                 throw e
             } finally {
-                clearTimeout(timeoutId)
+                if (idleTimer) clearTimeout(idleTimer)
             }
         },
         onError: (error) => {
@@ -906,11 +922,13 @@ Call this tool to get shape names and usage syntax for a specific library.`,
             const msg =
                 error instanceof Error ? error.message : String(error ?? "")
             const lowerMsg = msg.toLowerCase()
+            const isOwnAbort =
+                abortController.signal.aborted && lowerMsg.includes("aborted")
             const isTimeout =
+                isOwnAbort ||
                 lowerMsg.includes("timeout") ||
                 lowerMsg.includes("timed out") ||
                 (APICallError.isInstance(error) && error.statusCode === 524)
-            // "No output generated" is always a side-effect of an earlier error
             const isNoOutput = lowerMsg.includes("no output generated")
             if (isTimeout || isNoOutput) {
                 return "AI provider timed out. The model may be overloaded — please try again or switch to a different model."
