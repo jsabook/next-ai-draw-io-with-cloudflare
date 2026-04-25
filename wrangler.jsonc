@@ -4,6 +4,9 @@
     "name": "next-ai-draw-io-worker",
     "compatibility_date": "2025-04-24",
     "compatibility_flags": ["nodejs_compat"],
+    "build": {
+        "command": "npx opennextjs-cloudflare build"
+    },
     "assets": {
         "directory": ".open-next/assets",
         "binding": "ASSETS"
