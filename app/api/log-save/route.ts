@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto"
 import { z } from "zod"
 import { getLangfuseClient } from "@/lib/langfuse"
 
@@ -50,10 +49,10 @@ export async function POST(req: Request) {
                 batch: [
                     {
                         type: "score-create",
-                        id: randomUUID(),
+                        id: crypto.randomUUID(),
                         timestamp,
                         body: {
-                            id: randomUUID(),
+                            id: crypto.randomUUID(),
                             traceId: latestTrace.id,
                             name: "diagram-saved",
                             value: 1,

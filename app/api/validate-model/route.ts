@@ -13,8 +13,6 @@ import { normalizeMiniMaxBaseURL } from "@/lib/ai-providers"
 import { allowPrivateUrls, isPrivateUrl } from "@/lib/ssrf-protection"
 import { PROVIDER_INFO, type ProviderName } from "@/lib/types/model-config"
 
-export const runtime = "nodejs"
-
 interface ValidateRequest {
     provider: string
     apiKey: string

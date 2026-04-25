@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto"
 import { z } from "zod"
 import { getLangfuseClient } from "@/lib/langfuse"
 import { getUserIdFromRequest } from "@/lib/user-id"
@@ -48,14 +47,14 @@ export async function POST(req: Request) {
 
         if (!latestTrace) {
             // No trace found for this session - create a standalone feedback trace
-            const traceId = randomUUID()
+            const traceId = crypto.randomUUID()
             const timestamp = new Date().toISOString()
 
             await langfuse.api.ingestion.batch({
                 batch: [
                     {
                         type: "trace-create",
-                        id: randomUUID(),
+                        id: crypto.randomUUID(),
                         timestamp,
                         body: {
                             id: traceId,
@@ -72,10 +71,10 @@ export async function POST(req: Request) {
                     },
                     {
                         type: "score-create",
-                        id: randomUUID(),
+                        id: crypto.randomUUID(),
                         timestamp,
                         body: {
-                            id: randomUUID(),
+                            id: crypto.randomUUID(),
                             traceId,
                             name: "user-feedback",
                             value: feedback === "good" ? 1 : 0,
@@ -92,10 +91,10 @@ export async function POST(req: Request) {
                 batch: [
                     {
                         type: "score-create",
-                        id: randomUUID(),
+                        id: crypto.randomUUID(),
                         timestamp,
                         body: {
-                            id: randomUUID(),
+                            id: crypto.randomUUID(),
                             traceId: latestTrace.id,
                             name: "user-feedback",
                             value: feedback === "good" ? 1 : 0,

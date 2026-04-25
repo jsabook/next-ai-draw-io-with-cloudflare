@@ -1,12 +1,9 @@
-import { createAmazonBedrock } from "@ai-sdk/amazon-bedrock"
 import { createAnthropic } from "@ai-sdk/anthropic"
 import { azure, createAzure } from "@ai-sdk/azure"
 import { createDeepSeek, deepseek } from "@ai-sdk/deepseek"
 import { createGateway, gateway } from "@ai-sdk/gateway"
 import { createGoogleGenerativeAI, google } from "@ai-sdk/google"
-import { createVertex } from "@ai-sdk/google-vertex"
 import { createOpenAI, openai } from "@ai-sdk/openai"
-import { fromNodeProviderChain } from "@aws-sdk/credential-providers"
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
 import { createOllama, ollama } from "ollama-ai-provider-v2"
 import { PROVIDER_INFO, type ProviderName } from "@/lib/types/model-config"
@@ -662,7 +659,9 @@ function validateProviderCredentials(
  * - MODELSCOPE_API_KEY: ModelScope API key
  * - MODELSCOPE_BASE_URL: ModelScope endpoint (optional)
  */
-export function getAIModel(overrides?: ClientOverrides): ModelConfig {
+export async function getAIModel(
+    overrides?: ClientOverrides,
+): Promise<ModelConfig> {
     // SECURITY: Prevent SSRF attacks (GHSA-9qf7-mprq-9qgm)
     // If a custom baseUrl is provided, an API key MUST also be provided.
     // This prevents attackers from redirecting server API keys to malicious endpoints.
@@ -771,25 +770,34 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
 
     switch (provider) {
         case "bedrock": {
+            const { createAmazonBedrock } = await import(
+                "@ai-sdk/amazon-bedrock"
+            )
             // Use client-provided credentials if available, otherwise fall back to IAM/env vars
             const hasClientCredentials =
                 overrides?.awsAccessKeyId && overrides?.awsSecretAccessKey
             const bedrockRegion =
                 overrides?.awsRegion || process.env.AWS_REGION || "us-west-2"
 
-            const bedrockProvider = hasClientCredentials
-                ? createAmazonBedrock({
-                      region: bedrockRegion,
-                      accessKeyId: overrides.awsAccessKeyId as string,
-                      secretAccessKey: overrides.awsSecretAccessKey as string,
-                      ...(overrides?.awsSessionToken && {
-                          sessionToken: overrides.awsSessionToken,
-                      }),
-                  })
-                : createAmazonBedrock({
-                      region: bedrockRegion,
-                      credentialProvider: fromNodeProviderChain(),
-                  })
+            let bedrockProvider
+            if (hasClientCredentials) {
+                bedrockProvider = createAmazonBedrock({
+                    region: bedrockRegion,
+                    accessKeyId: overrides.awsAccessKeyId as string,
+                    secretAccessKey: overrides.awsSecretAccessKey as string,
+                    ...(overrides?.awsSessionToken && {
+                        sessionToken: overrides.awsSessionToken,
+                    }),
+                })
+            } else {
+                const { fromNodeProviderChain } = await import(
+                    "@aws-sdk/credential-providers"
+                )
+                bedrockProvider = createAmazonBedrock({
+                    region: bedrockRegion,
+                    credentialProvider: fromNodeProviderChain(),
+                })
+            }
             model = bedrockProvider(modelId)
             // Add Anthropic beta options if using Claude models via Bedrock
             if (modelId.includes("anthropic.claude")) {
@@ -882,6 +890,7 @@ export function getAIModel(overrides?: ClientOverrides): ModelConfig {
             break
         }
         case "vertexai": {
+            const { createVertex } = await import("@ai-sdk/google-vertex")
             // Express Mode: Use API key for authentication
             const vertexApiKey =
                 overrides?.vertexApiKey || process.env.GOOGLE_VERTEX_API_KEY
@@ -1384,7 +1393,7 @@ export function supportsImageInput(modelId: string): boolean {
  * Uses VALIDATION_MODEL env var if set, otherwise falls back to AI_MODEL.
  * Throws if the model doesn't support image input.
  */
-export function getValidationModel(): ReturnType<typeof getAIModel>["model"] {
+export async function getValidationModel(): Promise<ModelConfig["model"]> {
     const modelId = process.env.VALIDATION_MODEL || process.env.AI_MODEL
 
     if (!modelId) {
@@ -1399,6 +1408,6 @@ export function getValidationModel(): ReturnType<typeof getAIModel>["model"] {
         )
     }
 
-    const { model } = getAIModel({ modelId })
+    const { model } = await getAIModel({ modelId })
     return model
 }

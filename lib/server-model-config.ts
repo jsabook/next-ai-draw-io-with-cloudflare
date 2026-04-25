@@ -1,5 +1,3 @@
-import fs from "fs/promises"
-import path from "path"
 import { z } from "zod"
 import type { ProviderName } from "@/lib/types/model-config"
 import { PROVIDER_INFO } from "@/lib/types/model-config"
@@ -56,40 +54,17 @@ function slugify(name: string): string {
         .replace(/^-|-$/g, "")
 }
 
-function getConfigPath(): string {
-    const custom = process.env.AI_MODELS_CONFIG_PATH
-    if (custom && custom.trim().length > 0) return custom
-    return path.join(process.cwd(), "ai-models.json")
-}
-
 export async function loadRawServerModelsConfig(): Promise<ServerModelsConfig | null> {
-    // Priority 1: AI_MODELS_CONFIG env var (JSON string) - for cloud deployments
     const envConfig = process.env.AI_MODELS_CONFIG
-    if (envConfig && envConfig.trim().length > 0) {
-        try {
-            const json = JSON.parse(envConfig)
-            return ServerModelsConfigSchema.parse(json)
-        } catch (err) {
-            console.error(
-                "[server-model-config] Failed to parse AI_MODELS_CONFIG:",
-                err,
-            )
-            return null
-        }
+    if (!envConfig || envConfig.trim().length === 0) {
+        return null
     }
-
-    // Priority 2: ai-models.json file
-    const configPath = getConfigPath()
     try {
-        const jsonStr = await fs.readFile(configPath, "utf8")
-        const json = JSON.parse(jsonStr)
+        const json = JSON.parse(envConfig)
         return ServerModelsConfigSchema.parse(json)
-    } catch (err: any) {
-        if (err?.code === "ENOENT") {
-            return null
-        }
+    } catch (err) {
         console.error(
-            "[server-model-config] Failed to load ai-models.json:",
+            "[server-model-config] Failed to parse AI_MODELS_CONFIG:",
             err,
         )
         return null

@@ -5,8 +5,8 @@
 
 import { streamObject } from "ai"
 import { getValidationModel } from "@/lib/ai-providers"
-import { VALIDATION_SYSTEM_PROMPT } from "@/lib/validation-prompts"
 import { getPromptOverride } from "@/lib/db/prompts"
+import { VALIDATION_SYSTEM_PROMPT } from "@/lib/validation-prompts"
 import {
     type ValidationResult,
     ValidationResultSchema,
@@ -76,7 +76,7 @@ export async function POST(req: Request): Promise<Response> {
         // Get the validation model
         let model
         try {
-            model = getValidationModel()
+            model = await getValidationModel()
         } catch (error) {
             console.warn(
                 "[validate-diagram] Validation model not available:",

@@ -9,9 +9,7 @@ import {
     stepCountIs,
     streamText,
 } from "ai"
-import fs from "fs/promises"
 import { jsonrepair } from "jsonrepair"
-import path from "path"
 import { z } from "zod"
 import {
     getAIModel,
@@ -29,17 +27,13 @@ import { getAllPromptOverrides } from "@/lib/db/prompts"
 import { insertRequestLog } from "@/lib/db/request-logs"
 import { getStylePreset } from "@/lib/db/style-presets"
 import {
-    checkAndIncrementRequest,
-    isQuotaEnabled,
-    recordTokenUsage,
-} from "@/lib/dynamo-quota-manager"
-import {
     getTelemetryConfig,
     setTraceInput,
     setTraceOutput,
     wrapWithObserve,
 } from "@/lib/langfuse"
 import { findServerModelById } from "@/lib/server-model-config"
+import { getShapeLibrary } from "@/lib/shape-libraries"
 import { getSystemPrompt } from "@/lib/system-prompts"
 import { getUserIdFromRequest } from "@/lib/user-id"
 
@@ -128,36 +122,6 @@ async function handleChatRequest(req: Request): Promise<Response> {
         sessionId: validSessionId,
         userId: userId,
     })
-
-    // === SERVER-SIDE QUOTA CHECK START ===
-    // Quota is opt-in: only enabled when DYNAMODB_QUOTA_TABLE env var is set
-    const hasOwnApiKey = !!(
-        req.headers.get("x-ai-provider") &&
-        (req.headers.get("x-ai-api-key") ||
-            req.headers.get("x-aws-access-key-id") ||
-            req.headers.get("x-vertex-api-key"))
-    )
-
-    // Skip quota check if: quota disabled, user has own API key, or is anonymous
-    if (isQuotaEnabled() && !hasOwnApiKey && userId !== "anonymous") {
-        const quotaCheck = await checkAndIncrementRequest(userId, {
-            requests: Number(process.env.DAILY_REQUEST_LIMIT) || 10,
-            tokens: Number(process.env.DAILY_TOKEN_LIMIT) || 200000,
-            tpm: Number(process.env.TPM_LIMIT) || 20000,
-        })
-        if (!quotaCheck.allowed) {
-            return Response.json(
-                {
-                    error: quotaCheck.error,
-                    type: quotaCheck.type,
-                    used: quotaCheck.used,
-                    limit: quotaCheck.limit,
-                },
-                { status: 429 },
-            )
-        }
-    }
-    // === SERVER-SIDE QUOTA CHECK END ===
 
     // === FILE VALIDATION START ===
     const fileValidation = validateFileParts(messages)
@@ -257,7 +221,7 @@ async function handleChatRequest(req: Request): Promise<Response> {
         headers,
         modelId,
         provider: resolvedProvider,
-    } = getAIModel(clientOverrides)
+    } = await getAIModel(clientOverrides)
 
     // Check if model supports prompt caching
     const shouldCache = supportsPromptCaching(modelId)
@@ -666,20 +630,6 @@ IMPORTANT: The "Current diagram XML" is the SINGLE SOURCE OF TRUTH for what's on
                     }),
                     onFinish: ({ text, totalUsage }) => {
                         setTraceOutput(text)
-                        if (
-                            isQuotaEnabled() &&
-                            !hasOwnApiKey &&
-                            userId !== "anonymous" &&
-                            totalUsage
-                        ) {
-                            const totalTokens =
-                                (totalUsage.inputTokens || 0) +
-                                (totalUsage.outputTokens || 0) +
-                                (totalUsage.cachedInputTokens || 0) +
-                                (totalUsage.inputTokenDetails
-                                    ?.cacheWriteTokens || 0)
-                            recordTokenUsage(userId, totalTokens)
-                        }
                         insertRequestLog({
                             timestamp: new Date().toISOString(),
                             model: modelId,
@@ -820,49 +770,7 @@ Call this tool to get shape names and usage syntax for a specific library.`,
                                     ),
                             }),
                             execute: async ({ library }) => {
-                                const sanitizedLibrary = library
-                                    .toLowerCase()
-                                    .replace(/[^a-z0-9_-]/g, "")
-                                if (
-                                    sanitizedLibrary !== library.toLowerCase()
-                                ) {
-                                    return `Invalid library name "${library}". Use only letters, numbers, underscores, and hyphens.`
-                                }
-                                const baseDir = path.join(
-                                    process.cwd(),
-                                    "docs/shape-libraries",
-                                )
-                                const filePath = path.join(
-                                    baseDir,
-                                    `${sanitizedLibrary}.md`,
-                                )
-                                const resolvedPath = path.resolve(filePath)
-                                if (
-                                    !resolvedPath.startsWith(
-                                        path.resolve(baseDir),
-                                    )
-                                ) {
-                                    return `Invalid library path.`
-                                }
-                                try {
-                                    const content = await fs.readFile(
-                                        filePath,
-                                        "utf-8",
-                                    )
-                                    return content
-                                } catch (error) {
-                                    if (
-                                        (error as NodeJS.ErrnoException)
-                                            .code === "ENOENT"
-                                    ) {
-                                        return `Library "${library}" not found. Available: aws4, azure2, gcp2, alibaba_cloud, cisco19, kubernetes, network, bpmn, flowchart, basic, arrows2, vvd, salesforce, citrix, sap, mscae, atlassian, fluidpower, electrical, pid, cabinets, floorplan, webicons, infographic, sitemap, android, material_design, lean_mapping, openstack, rack`
-                                    }
-                                    console.error(
-                                        `[get_shape_library] Error loading "${library}":`,
-                                        error,
-                                    )
-                                    return `Error loading library "${library}". Please try again.`
-                                }
+                                return getShapeLibrary(library)
                             },
                         },
                     },

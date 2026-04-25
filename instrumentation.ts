@@ -1,8 +1,4 @@
-import { LangfuseSpanProcessor } from "@langfuse/otel"
-import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node"
-
-export function register() {
-    // Skip telemetry if Langfuse env vars are not configured
+export async function register() {
     if (!process.env.LANGFUSE_PUBLIC_KEY || !process.env.LANGFUSE_SECRET_KEY) {
         console.warn(
             "[Langfuse] Environment variables not configured - telemetry disabled",
@@ -10,26 +6,34 @@ export function register() {
         return
     }
 
-    const langfuseSpanProcessor = new LangfuseSpanProcessor({
-        publicKey: process.env.LANGFUSE_PUBLIC_KEY,
-        secretKey: process.env.LANGFUSE_SECRET_KEY,
-        baseUrl: process.env.LANGFUSE_BASEURL,
-        // Whitelist approach: only export AI-related spans
-        shouldExportSpan: ({ otelSpan }) => {
-            const spanName = otelSpan.name
-            // Only export AI SDK spans (ai.*) and our explicit "chat" wrapper
-            if (spanName === "chat" || spanName.startsWith("ai.")) {
-                return true
-            }
-            return false
-        },
-    })
+    try {
+        const { LangfuseSpanProcessor } = await import("@langfuse/otel")
+        const { NodeTracerProvider } = await import(
+            "@opentelemetry/sdk-trace-node"
+        )
 
-    const tracerProvider = new NodeTracerProvider({
-        spanProcessors: [langfuseSpanProcessor],
-    })
+        const langfuseSpanProcessor = new LangfuseSpanProcessor({
+            publicKey: process.env.LANGFUSE_PUBLIC_KEY,
+            secretKey: process.env.LANGFUSE_SECRET_KEY,
+            baseUrl: process.env.LANGFUSE_BASEURL,
+            shouldExportSpan: ({ otelSpan }) => {
+                const spanName = otelSpan.name
+                if (spanName === "chat" || spanName.startsWith("ai.")) {
+                    return true
+                }
+                return false
+            },
+        })
 
-    // Register globally so AI SDK's telemetry also uses this processor
-    tracerProvider.register()
-    console.log("[Langfuse] Instrumentation initialized successfully")
+        const tracerProvider = new NodeTracerProvider({
+            spanProcessors: [langfuseSpanProcessor],
+        })
+
+        tracerProvider.register()
+        console.log("[Langfuse] Instrumentation initialized successfully")
+    } catch {
+        console.warn(
+            "[Langfuse] OpenTelemetry not available in this runtime - telemetry disabled",
+        )
+    }
 }

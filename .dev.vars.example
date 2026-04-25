@@ -1,0 +1,21 @@
+# Cloudflare Workers local development environment variables
+# Copy this file to .dev.vars and fill in your values:
+#   cp .dev.vars.example .dev.vars
+#
+# See env.example for the full list of available variables.
+# This file uses the same format — only the filename differs
+# (Cloudflare Wrangler reads .dev.vars instead of .env.local).
+
+# AI Provider — pick one and uncomment its section in env.example
+AI_PROVIDER=openai
+AI_MODEL=gpt-4o
+# OPENAI_API_KEY=sk-...
+
+# Access Control (Optional)
+# ACCESS_CODE_LIST=your-secret-code
+
+# Admin Panel (Optional — requires Cloudflare D1)
+# CF_ACCOUNT_ID=
+# CF_API_TOKEN=
+# CF_D1_DATABASE_ID=
+# JWT_SECRET=your-jwt-secret-key-at-least-32-characters

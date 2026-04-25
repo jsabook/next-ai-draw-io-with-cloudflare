@@ -24,7 +24,7 @@ function getLocale(request: NextRequest): string | undefined {
     return locale
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
     const pathname = request.nextUrl.pathname
 
     // Admin routes: auth is handled client-side by DashboardLayout
