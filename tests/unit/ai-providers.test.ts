@@ -276,18 +276,18 @@ describe("Ollama API key security", () => {
         )
     })
 
-    it("does NOT leak server OLLAMA_API_KEY when client provides a custom baseUrl", () => {
+    it("does NOT leak server OLLAMA_API_KEY when client provides a custom baseUrl", async () => {
         process.env.OLLAMA_API_KEY = "server-secret-key"
 
         // When server has OLLAMA_API_KEY, the SSRF guard rejects
         // client-provided baseUrl without an apiKey outright
-        expect(() =>
+        await expect(
             getAIModel({
                 provider: "ollama",
                 baseUrl: "https://evil-server.com",
                 modelId: "llama2",
             }),
-        ).toThrow("API key is required")
+        ).rejects.toThrow("API key is required")
     })
 
     it("uses client API key when client provides both baseUrl and apiKey", () => {
