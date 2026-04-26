@@ -1,4 +1,4 @@
 # Skip if node_modules not installed (e.g., on EC2 push server)
 if [ -d "node_modules" ]; then
-  npx vitest --run --pool=forks
+  node node_modules/vitest/vitest.mjs --run --pool=forks
 fi

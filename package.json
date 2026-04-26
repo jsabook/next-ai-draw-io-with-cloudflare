@@ -6,7 +6,7 @@
     "main": "dist-electron/main/index.js",
     "scripts": {
         "dev": "next dev --port 6002",
-        "build": "next build && opennextjs-cloudflare build",
+        "build": "next build",
         "migrate": "npx tsx scripts/migrate.ts",
         "start": "next start --port 6001",
         "lint": "biome lint .",
