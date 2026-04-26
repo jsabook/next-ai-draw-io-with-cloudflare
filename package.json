@@ -6,7 +6,7 @@
     "main": "dist-electron/main/index.js",
     "scripts": {
         "dev": "next dev --port 6002",
-        "build": "next build",
+        "build": "next build && opennextjs-cloudflare build",
         "migrate": "npx tsx scripts/migrate.ts",
         "start": "next start --port 6001",
         "lint": "biome lint .",
@@ -28,7 +28,7 @@
         "dist:win:build": "npm run electron:build && npm run electron:prepare && npx electron-builder --config electron/electron-builder.yml --win --publish never",
         "dist:linux": "npm run electron:build && npm run electron:prepare && npx electron-builder --config electron/electron-builder.yml --linux",
         "dist:all": "npm run electron:build && npm run electron:prepare && npx electron-builder --config electron/electron-builder.yml --mac --win --linux",
-        "test": "vitest",
+        "test": "vitest --pool=forks",
         "test:e2e": "playwright test"
     },
     "dependencies": {
